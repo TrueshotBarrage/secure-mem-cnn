@@ -5,6 +5,12 @@ import pyoram
 from pyoram.encrypted_storage.encrypted_block_storage import EncryptedBlockStorage
 from pyoram.storage.block_storage_ram import BlockStorageRAM
 
+# Minimum on-chip memory size for given M & N; maybe different per layer
+# (Worst case on-chip memory size for all the layers)
+# Number of memory reads & writes for each layer
+# (Plot of memory transfer, using mem_addr & time)
+
+# Separate on-chip mem structures for W, IFM, OFM
 # Precondition: Must be a factor of the # of weights for now
 M = dict()
 M[0] = 2
@@ -115,18 +121,19 @@ class Manager():
       self.start_block += num_blocks
       self.biases[layer] = (start_block, num_blocks, shape, data_pad)
 
-   def read_layer_weights(self, layer, i = 0):
+   def read_layer_weights(self, layer, i = 0, j = 0):
       (start_block, num_blocks, shape, data_pad) = self.weights[layer]
-      num_blocks_per_fetch = int(num_blocks * M[layer] / float(shape[0]))
+      num_blocks_M = int(num_blocks * M[layer] / float(shape[0]))
+      num_blocks_N = int(num_blocks_M * N[layer] / float(shape[1]))
 
-      h = self.read_blocks(start_block + i * num_blocks_per_fetch, \
-         num_blocks_per_fetch)
+      h = self.read_blocks(start_block + i * num_blocks_M + j * num_blocks_N, \
+         num_blocks_N)
       
       if data_pad != 0:
          h = h[: h.size - data_pad]
       
-      h = h.reshape((M[layer], shape[1], shape[2], shape[3]))
-      return (h, (shape[0], M[layer]))
+      h = h.reshape((M[layer], N[layer], shape[2], shape[3]))
+      return (h, (shape[0], M[layer]), (shape[1], N[layer]))
  
    def read_layer_bias(self, layer, i = 0):
       (start_block, num_blocks, shape, data_pad) = self.biases[layer]

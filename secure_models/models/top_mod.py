@@ -125,25 +125,36 @@ def compute_layer(layer, index, x, manager = None):
       return layer(x)
    else:
       try:
+         # Reads all the necessary data
          weights = manager.read_layer_weights(index)
-         M = weights[1][1] # (weights, (num of all filters, M))
+         M = weights[1][1] # ( weights, (num_filters, M), (depth, N) )
+         N = weights[2][1]
          num_filters = weights[1][0]
-         weights = torch.from_numpy(weights[0])
-         bias = torch.from_numpy(manager.read_layer_bias(index))
-
-         result = F.conv2d(x, weights, bias = bias, \
-            stride = layer.stride, padding = layer.padding)
+         depth = weights[2][0]
          
-         for i in range(int(num_filters / M) - 1):
-            weights = manager.read_layer_weights(index, i + 1)
-            weights = torch.from_numpy(weights[0])
-            bias = torch.from_numpy(manager.read_layer_bias(index, i + 1))
+         for i in range(int(num_filters / M)):
+            for j in range(int(depth / N)):
+               weights = manager.read_layer_weights(index, i, j)
+               weights = torch.from_numpy(weights[0])
+               bias = torch.from_numpy(manager.read_layer_bias(index, i))
 
-            result = torch.cat((result, F.conv2d(x, weights, bias = bias, \
-               stride = layer.stride, padding = layer.padding)), dim = 1)
+               if j == 0:
+                  conv = F.conv2d(x, weights, bias = bias, \
+                     stride = layer.stride, padding = layer.padding)
+               else:
+                  conv = conv + F.conv2d(x, weights, bias = bias, \
+                     stride = layer.stride, padding = layer.padding)
+            
+            if i == 0:
+               result = conv
+            else:
+               result = torch.cat((result, conv), dim = 1)
          
          return result
       except:
+         if (index == 0) or (index == 3) or (index == 6) or (index == 8) or (index == 10):
+            raise
+         print("rip")
          return layer(x)
 
 def predict(model, test_loader, image, manager):
