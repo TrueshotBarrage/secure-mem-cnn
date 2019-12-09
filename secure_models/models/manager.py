@@ -41,7 +41,6 @@ class Manager():
       shape = h.shape
       num_blocks = int(math.ceil(h.nbytes / float(self.block_size)))
 
-      # Pads the data to the worst case size feature block(?)
       data_pad = int((num_blocks * self.block_size - h.nbytes) / self.elem_size)
       h = h.flatten()
       if (data_pad != 0):
