@@ -13,8 +13,6 @@ from manager_mod import *
 
 PATH = 'model/alexnet'
 
-on_chip_storage = torch.Tensor()
-
 class Alexnet(nn.Module):
    def __init__(self):
       super(Alexnet, self).__init__()
@@ -140,16 +138,20 @@ def compute_layer(layer, index, x, manager = None):
                weights = torch.from_numpy(weights[0])
                bias = torch.from_numpy(manager.read_layer_bias(index, i))
 
-               input_feature_map = torch.chunk(x, int(depth / N), dim = 1)[j]
+               input_feature_map = torch.chunk(x, int(depth / N), dim = 1)
                partial_input = input_feature_map[j]
 
                if j == 0:
-                  conv = F.conv2d(partial_input, weights, bias = bias, \
+                  conv = F.conv2d(partial_input, weights, bias = None, \
                      stride = layer.stride, padding = layer.padding)
                else:
-                  conv = conv + F.conv2d(partial_input, weights, bias = bias, \
+                  conv = conv + F.conv2d(partial_input, weights, bias = None, \
                      stride = layer.stride, padding = layer.padding)
             
+            # Manually adds the bias once separately
+            for b in range(len(bias)):
+               conv[0][b] = conv[0][b] + bias[b]
+
             if i == 0:
                result = conv
             else:
@@ -159,7 +161,6 @@ def compute_layer(layer, index, x, manager = None):
       except:
          if (index == 0) or (index == 3) or (index == 6) or (index == 8) or (index == 10):
             raise
-         print("rip")
          return layer(x)
 
 def predict(model, test_loader, image, manager):
