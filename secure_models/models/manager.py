@@ -48,6 +48,7 @@ class Manager():
          arr = np.zeros(data_pad, dtype = "float32")
          h = np.concatenate((h, arr))
       
+      # for loop to iterate in parts
       self.write_blocks(start_block, num_blocks, h)
       return (start_block, num_blocks, shape, data_pad)
 

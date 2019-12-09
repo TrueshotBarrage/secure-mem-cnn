@@ -126,6 +126,11 @@ def compute_layer(layer, index, x, storage = None):
       try:
          weights = torch.from_numpy(storage.read_layer_weights(index))
          bias = torch.from_numpy(storage.read_layer_bias(index))
+         # Need to change to this!!! below:
+         #
+         # for each (i) of the weights/biases in blocks: 
+         #   result += F.conv2d(x, weights[0~i], bias[0~i], stride/padding etc.)
+         # return result
          return F.conv2d(x, weights, bias = bias, 
          stride = layer.stride, padding = layer.padding)
       except:
@@ -143,8 +148,8 @@ def predict(model, test_loader, image, storage):
    # For each layer (Conv2d, ReLU, pool, etc.) 
    # of the given CNN (AlexNet):
    for index, layer in enumerate(model.features):
-      layer_data = torch.from_numpy(storage.read_data())
-      h = compute_layer(layer, index, layer_data, storage)
+      x = torch.from_numpy(storage.read_data())
+      h = compute_layer(layer, index, x, storage)
       storage.write_data(h.detach().numpy())
 
    x = torch.from_numpy(storage.read_data())
@@ -180,7 +185,7 @@ def main():
 
    if (sys.argv[1] == 'train'):
       model = train_model(train_loader, test_loader, device, epochs)
-   elif (sys.argv[1] == 'load'):
+   else:
       model = torch.load(PATH)
    
    images = range(10) # Load 10 images to guess
