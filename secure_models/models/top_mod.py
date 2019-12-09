@@ -11,7 +11,7 @@ import time
 
 from manager_mod import *
 
-PATH = 'model/hello/alexnet'
+PATH = 'model/alexnet'
 
 class Alexnet(nn.Module):
    def __init__(self):
@@ -117,7 +117,6 @@ def write_model(model, manager):
          manager.write_weights(i, weights)
          manager.write_bias(i, bias)
       except:
-         print("Failed to write model for layer")
          pass
 
 def compute_layer(layer, index, x, manager = None):
@@ -140,11 +139,12 @@ def compute_layer(layer, index, x, manager = None):
             bias = torch.from_numpy(manager.read_layer_bias(index, i + 1))
 
             result = torch.cat((result, F.conv2d(x, weights, bias = bias, \
-               stride = layer.stride, padding = layer.padding)), dim = 0)
+               stride = layer.stride, padding = layer.padding)), dim = 1)
          
          return result
       except:
-         print("Failed to convolve correctly")
+         print("Failed to convolve this layer \
+         (could be ReLU, etc. or some error!)")
          return layer(x)
 
 def predict(model, test_loader, image, manager):

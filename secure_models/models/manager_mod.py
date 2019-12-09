@@ -5,8 +5,36 @@ import pyoram
 from pyoram.encrypted_storage.encrypted_block_storage import EncryptedBlockStorage
 from pyoram.storage.block_storage_ram import BlockStorageRAM
 
-M = 2 # Precondition: Must be a factor of the # of weights for now
-N = 2 # make dict, layerwise
+# Precondition: Must be a factor of the # of weights for now
+M = dict()
+M[0] = 2
+M[1] = 2
+M[2] = 2
+M[3] = 2
+M[4] = 2
+M[5] = 2
+M[6] = 2
+M[7] = 2
+M[8] = 2
+M[9] = 2
+M[10] = 2
+M[11] = 2
+M[12] = 2
+
+N = dict()
+N[0] = 3
+N[1] = 16
+N[2] = 16
+N[3] = 16
+N[4] = 16
+N[5] = 16
+N[6] = 16
+N[7] = 16
+N[8] = 16
+N[9] = 16
+N[10] = 16
+N[11] = 16
+N[12] = 16
       
 class Manager():
    def __init__(self):
@@ -39,87 +67,21 @@ class Manager():
          h[i * data_size : (i + 1) * data_size] = np.frombuffer(
             block_data, dtype = "float32")
       return h
-   
-   # h represents weights or bias, depending on the 
-   # method calling it; returned value holds no actual data, 
-   # but specs for the param, including data_pad (which is an int)
-   def write_layer_param(self, h, start_block):
-      shape = h.shape
-      # eventually implement partial convs with partial filters (remove shape[1])
-      fetch_size = shape[2] * shape[3] * shape[1] * M
-      num_blocks_per_fetch = int(math.ceil(
-         fetch_size * self.elem_size / float(self.block_size)))
-      num_blocks = int(num_blocks_per_fetch * shape[0] / float(M))
-
-      data_pad = int((num_blocks_per_fetch * self.block_size \
-      - fetch_size * self.elem_size) / self.elem_size)
-      for i in range(int(shape[0] / M)):
-         data = h[i * M : (i+1) * M].flatten()
-         if data_pad != 0:
-            arr = np.zeros(data_pad, dtype = "float32")
-            data = np.concatenate((data, arr))
-         
-         self.write_blocks(start_block + i * num_blocks_per_fetch, \
-            num_blocks_per_fetch, data)
-      return (start_block, num_blocks, shape, data_pad)
-   
-   # "data" holds no actual data, but specs for the param, 
-   # including data_pad (which is an int)
-   def read_layer_param(self, data, i = 0):
-      (start_block, num_blocks, shape, data_pad) = data
-      num_blocks_per_fetch = int(num_blocks * M / float(shape[0]))
-
-      h = self.read_blocks(start_block + i * num_blocks_per_fetch, \
-         num_blocks_per_fetch)
-      
-      if data_pad != 0:
-         h = h[: h.size - data_pad]
-      
-      h = h.reshape((M, shape[1], shape[2], shape[3]))
-      return (h, (shape[0], M))
-
-      # if iter_index is not 0:
-      #    start_block += iter_index * ON_CHIP_MEMORY_SIZE - 1
-
-      # # Only works for weight filters *
-      # num_filters = int((self.block_size / self.elem_size * ON_CHIP_MEMORY_SIZE) \
-      #    / (shape[1] * shape[2] * shape[3]))
-      # leftover = int((self.block_size / self.elem_size * ON_CHIP_MEMORY_SIZE) \
-      #    % (shape[1] * shape[2] * shape[3]))
-      # new_shape = (num_filters, shape[1], shape[2], shape[3])
-      
-      # done = True if iter_index is (iterations - 1) else False
-      
-      # if not done:
-      #    h = self.read_blocks(start_block, ON_CHIP_MEMORY_SIZE)
-      #    h = h[: h.size - leftover]
-      # else: # Last iteration
-      #    remaining = num_blocks % ON_CHIP_MEMORY_SIZE
-      #    if remaining is not 0:
-      #       h = self.read_blocks(start_block, remaining)
-      #    else: # Edge case where remaining is zero or seven
-      #       h = self.read_blocks(start_block, ON_CHIP_MEMORY_SIZE)
-
-      #    if data_pad != 0:
-      #       h = h[: h.size - data_pad]
-
-      # h = h.reshape(new_shape)
-      # return (h, done)
 
    def write_weights(self, layer, weights):
       h = weights.detach().numpy()
       start_block = self.start_block
       shape = h.shape
       # eventually implement partial convs with partial filters (remove shape[1])
-      fetch_size = shape[2] * shape[3] * shape[1] * M
+      fetch_size = shape[2] * shape[3] * shape[1] * M[layer]
       num_blocks_per_fetch = int(math.ceil(
          fetch_size * self.elem_size / float(self.block_size)))
-      num_blocks = int(num_blocks_per_fetch * shape[0] / float(M))
+      num_blocks = int(num_blocks_per_fetch * shape[0] / float(M[layer]))
 
       data_pad = int((num_blocks_per_fetch * self.block_size \
       - fetch_size * self.elem_size) / self.elem_size)
-      for i in range(int(shape[0] / M)):
-         data = h[i * M : (i+1) * M].flatten()
+      for i in range(int(shape[0] / M[layer])):
+         data = h[i * M[layer] : (i+1) * M[layer]].flatten()
          if data_pad != 0:
             arr = np.zeros(data_pad, dtype = "float32")
             data = np.concatenate((data, arr))
@@ -151,7 +113,7 @@ class Manager():
 
    def read_layer_weights(self, layer, i = 0):
       (start_block, num_blocks, shape, data_pad) = self.weights[layer]
-      num_blocks_per_fetch = int(num_blocks * M / float(shape[0]))
+      num_blocks_per_fetch = int(num_blocks * M[layer] / float(shape[0]))
 
       h = self.read_blocks(start_block + i * num_blocks_per_fetch, \
          num_blocks_per_fetch)
@@ -159,8 +121,8 @@ class Manager():
       if data_pad != 0:
          h = h[: h.size - data_pad]
       
-      h = h.reshape((M, shape[1], shape[2], shape[3]))
-      return (h, (shape[0], M))
+      h = h.reshape((M[layer], shape[1], shape[2], shape[3]))
+      return (h, (shape[0], M[layer]))
  
    def read_layer_bias(self, layer, i = 0):
       (start_block, num_blocks, shape, data_pad) = self.biases[layer]
@@ -169,14 +131,14 @@ class Manager():
       if data_pad != 0:
          h = h[: h.size - data_pad]
       
-      h = h[i * M : (i+1) * M]
-      h = h.reshape((M,))
+      h = h[i * M[layer] : (i+1) * M[layer]]
+      h = h.reshape((M[layer],))
       return h
    
    def write_data(self, h):
       self.array_shape = h.shape
       # eventually implement partial convs with partial filters (add N)
-      image_size = self.array_shape[2] * self.array_shape[3] * self.array_shape[1]
+      image_size = self.array_shape[0] * self.array_shape[2] * self.array_shape[3] * self.array_shape[1]
       self.num_blocks = int(math.ceil(
          image_size * self.elem_size / float(self.block_size)))
 

@@ -9,7 +9,7 @@ import os
 import sys
 import time
 
-from manager import Manager
+from manager_mod import *
 
 PATH = 'model/alexnet'
 
@@ -109,50 +109,58 @@ def train_model(train_loader, test_loader, device, epochs):
 # see if weights/bias can be written (i.e. 
 # the layer is a convolution layer, not 
 # a ReLU or pooling layer).
-def write_model(model, storage):
+def write_model(model, manager):
    for i, layer in enumerate(model.features):
       try:
          weights = layer.weight
          bias = layer.bias 
-         storage.write_weights(i, weights)
-         storage.write_bias(i, bias)
+         manager.write_weights(i, weights)
+         manager.write_bias(i, bias)
       except:
          pass
 
-def compute_layer(layer, index, x, storage = None):
-   if (storage is None):
+def compute_layer(layer, index, x, manager = None):
+   if (manager is None):
       return layer(x)
    else:
       try:
-         weights = torch.from_numpy(storage.read_layer_weights(index))
-         bias = torch.from_numpy(storage.read_layer_bias(index))
-         # Need to change to this!!! below:
-         #
-         # for each (i) of the weights/biases in blocks: 
-         #   result += F.conv2d(x, weights[0~i], bias[0~i], stride/padding etc.)
-         # return result
-         return F.conv2d(x, weights, bias = bias, 
-         stride = layer.stride, padding = layer.padding)
+         weights = manager.read_layer_weights(index)
+         M = weights[1][1] # (weights, (num of all filters, M))
+         num_filters = weights[1][0]
+         weights = torch.from_numpy(weights[0])
+         bias = torch.from_numpy(manager.read_layer_bias(index))
+
+         result = F.conv2d(x, weights, bias = bias, \
+            stride = layer.stride, padding = layer.padding)
+         
+         for i in range(int(num_filters / M) - 1):
+            weights = manager.read_layer_weights(index, i + 1)
+            weights = torch.from_numpy(weights[0])
+            bias = torch.from_numpy(manager.read_layer_bias(index, i + 1))
+
+            result = torch.cat((result, F.conv2d(x, weights, bias = bias, \
+               stride = layer.stride, padding = layer.padding)), dim = 1)
+         
+         return result
       except:
          return layer(x)
 
-def predict(model, test_loader, image, storage):
+def predict(model, test_loader, image, manager):
    data, target = test_loader.dataset[image]
    data = model.dataview(data)
 
    # Writes all the data, separate into chunks (blocks),
-   # to the specified API-given storage (i.e. EncryptedBlockStorage)
-   # For example: self.storage (EBS) = block data
-   storage.write_data(data.numpy())
+   # to the specified API-given storage manager (i.e. EncryptedBlockStorage)
+   manager.write_data(data.numpy())
 
    # For each layer (Conv2d, ReLU, pool, etc.) 
    # of the given CNN (AlexNet):
    for index, layer in enumerate(model.features):
-      x = torch.from_numpy(storage.read_data())
-      h = compute_layer(layer, index, x, storage)
-      storage.write_data(h.detach().numpy())
+      x = torch.from_numpy(manager.read_data()) # Input feature block
+      h = compute_layer(layer, index, x, manager) # Convolution
+      manager.write_data(h.detach().numpy()) # Output feature block, to be next input
 
-   x = torch.from_numpy(storage.read_data())
+   x = torch.from_numpy(manager.read_data())
    output = model.classify(x)
    pred = output.argmax(dim = 1, keepdim = True)
 
@@ -160,11 +168,11 @@ def predict(model, test_loader, image, storage):
       + '   Target: ' + str(target)).format(image + 1))
 
 # Phase one
-def setup(model, test_loader, images, storage):
-   write_model(model, storage)
+def setup(model, test_loader, images, manager):
+   write_model(model, manager)
    
    for image in images:
-      predict(model, test_loader, image, storage)
+      predict(model, test_loader, image, manager)
 
 def main():
    device = torch.device("cpu")
@@ -190,9 +198,9 @@ def main():
    
    images = range(10) # Load 25 images to guess
 
-   storage = Manager(storage_name = "heap.bin")
+   manager = Manager()
 
-   setup(model, test_loader, images, storage)
+   setup(model, test_loader, images, manager)
 
 if __name__ == '__main__':
    main()
