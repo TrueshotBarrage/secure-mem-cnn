@@ -5,8 +5,8 @@ import pyoram
 from pyoram.encrypted_storage.encrypted_block_storage import EncryptedBlockStorage
 from pyoram.storage.block_storage_ram import BlockStorageRAM
 
-ON_CHIP_MEMORY_SIZE = 7
 M = 2 # Precondition: Must be a factor of the # of weights for now
+N = 2 # make dict, layerwise
       
 class Manager():
    def __init__(self):
