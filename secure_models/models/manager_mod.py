@@ -2,8 +2,11 @@ import torch
 import math
 import numpy as np
 import pyoram
+import time
 from pyoram.encrypted_storage.encrypted_block_storage import EncryptedBlockStorage
 from pyoram.storage.block_storage_ram import BlockStorageRAM
+
+from IOManager import IO
 
 # Minimum on-chip memory size for given M & N; maybe different per layer
 # (Worst case on-chip memory size for all the layers)
@@ -52,6 +55,7 @@ class Manager():
       self.biases = dict()
       self.on_chip_memory = Storage("onchip.bin", self.block_size, self.block_count)
       self.off_chip_memory = Storage("offchip.bin", self.block_size, self.block_count)
+      self.io = IO()
 
    def write_blocks(self, start_block, num_blocks, h):
       data_size = int(self.block_size / self.elem_size) # constant: 256
@@ -72,6 +76,7 @@ class Manager():
          block_data = self.off_chip_memory.read_block(start_block + i)
          h[i * data_size : (i + 1) * data_size] = np.frombuffer(
             block_data, dtype = "float32")
+      
       return h
 
    def write_weights(self, layer, weights):
@@ -96,8 +101,12 @@ class Manager():
                arr = np.zeros(data_pad, dtype = "float32")
                data = np.concatenate((data, arr))
             
-            self.write_blocks(start_block + num_blocks_per_fetch \
-               * int(shape[1] / N[layer] * i + j), num_blocks_per_fetch, data)
+            start_addr = start_block + num_blocks_per_fetch \
+               * int(shape[1] / N[layer] * i + j)
+            
+            self.write_blocks(start_addr, num_blocks_per_fetch, data)
+      
+      self.io.write_address(start_addr, dtype="weight", read=False)
 
       self.start_block += num_blocks
       self.weights[layer] = (start_block, num_blocks, shape, data_pad)
@@ -115,8 +124,10 @@ class Manager():
       if (data_pad != 0):
          arr = np.zeros(data_pad, dtype = "float32")
          h = np.concatenate((h, arr))
-         
+      
       self.write_blocks(start_block, num_blocks, h)
+
+      self.io.write_address(start_block, dtype="bias", read=False)
 
       self.start_block += num_blocks
       self.biases[layer] = (start_block, num_blocks, shape, data_pad)
@@ -126,22 +137,28 @@ class Manager():
       num_blocks_M = int(num_blocks * M[layer] / float(shape[0]))
       num_blocks_N = int(num_blocks_M * N[layer] / float(shape[1]))
 
-      h = self.read_blocks(start_block + i * num_blocks_M + j * num_blocks_N, \
-         num_blocks_N)
+      start_addr = start_block + i * num_blocks_M + j * num_blocks_N
+
+      h = self.read_blocks(start_addr, num_blocks_N)
       
       if data_pad != 0:
          h = h[: h.size - data_pad]
+      
+      self.io.write_address(start_addr, dtype="weight", read=True)
       
       h = h.reshape((M[layer], N[layer], shape[2], shape[3]))
       return (h, (shape[0], M[layer]), (shape[1], N[layer]))
  
    def read_layer_bias(self, layer, i = 0):
       (start_block, num_blocks, shape, data_pad) = self.biases[layer]
+
       h = self.read_blocks(start_block, num_blocks)
       
       if data_pad != 0:
          h = h[: h.size - data_pad]
       
+      self.io.write_address(start_block, dtype="bias", read=True)
+            
       h = h[i * M[layer] : (i+1) * M[layer]]
       h = h.reshape((M[layer],))
       return h
@@ -163,10 +180,15 @@ class Manager():
       
       self.write_blocks(self.start_block, self.num_blocks, h)
 
-   def read_data(self):     
+      self.io.write_address(self.start_block, dtype="output feature map", read=False)
+
+   def read_data(self):
       h = self.read_blocks(self.start_block, self.num_blocks)
+
       if self.pad != 0:
-          h = h[:h.size - self.pad]
+         h = h[:h.size - self.pad]
+      
+      self.io.write_address(self.start_block, dtype="input feature map", read=True)
 
       h = h.reshape(self.array_shape)
       return h

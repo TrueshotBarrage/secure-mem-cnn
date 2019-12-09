@@ -10,6 +10,7 @@ import sys
 import time
 
 from manager_mod import *
+from IOManager import *
 
 PATH = 'model/alexnet'
 
@@ -133,10 +134,10 @@ def compute_layer(layer, index, x, manager = None):
          depth = weights[2][0]
          
          for i in range(int(num_filters / M)):
+            bias = torch.from_numpy(manager.read_layer_bias(index, i))
             for j in range(int(depth / N)):
                weights = manager.read_layer_weights(index, i, j)
                weights = torch.from_numpy(weights[0])
-               bias = torch.from_numpy(manager.read_layer_bias(index, i))
 
                input_feature_map = torch.chunk(x, int(depth / N), dim = 1)
                partial_input = input_feature_map[j]
@@ -177,7 +178,7 @@ def predict(model, test_loader, image, manager):
       on_chip_storage = torch.from_numpy(manager.read_data()) # IFB
       on_chip_storage = compute_layer(layer, index, on_chip_storage, manager) # Conv
       manager.write_data(on_chip_storage.detach().numpy()) # OFB
-
+   
    on_chip_storage = torch.from_numpy(manager.read_data())
    output = model.classify(on_chip_storage)
    pred = output.argmax(dim = 1, keepdim = True)
@@ -191,6 +192,8 @@ def setup(model, test_loader, images, manager):
    
    for image in images:
       predict(model, test_loader, image, manager)
+   
+   manager.io.finish()
 
 def main():
    device = torch.device("cpu")
