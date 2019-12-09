@@ -13,6 +13,8 @@ from manager_mod import *
 
 PATH = 'model/alexnet'
 
+on_chip_storage = torch.Tensor()
+
 class Alexnet(nn.Module):
    def __init__(self):
       super(Alexnet, self).__init__()
@@ -138,11 +140,14 @@ def compute_layer(layer, index, x, manager = None):
                weights = torch.from_numpy(weights[0])
                bias = torch.from_numpy(manager.read_layer_bias(index, i))
 
+               input_feature_map = torch.chunk(x, int(depth / N), dim = 1)[j]
+               partial_input = input_feature_map[j]
+
                if j == 0:
-                  conv = F.conv2d(x, weights, bias = bias, \
+                  conv = F.conv2d(partial_input, weights, bias = bias, \
                      stride = layer.stride, padding = layer.padding)
                else:
-                  conv = conv + F.conv2d(x, weights, bias = bias, \
+                  conv = conv + F.conv2d(partial_input, weights, bias = bias, \
                      stride = layer.stride, padding = layer.padding)
             
             if i == 0:
@@ -168,12 +173,12 @@ def predict(model, test_loader, image, manager):
    # For each layer (Conv2d, ReLU, pool, etc.) 
    # of the given CNN (AlexNet):
    for index, layer in enumerate(model.features):
-      x = torch.from_numpy(manager.read_data()) # Input feature block
-      h = compute_layer(layer, index, x, manager) # Convolution
-      manager.write_data(h.detach().numpy()) # Output feature block, to be next input
+      on_chip_storage = torch.from_numpy(manager.read_data()) # IFB
+      on_chip_storage = compute_layer(layer, index, on_chip_storage, manager) # Conv
+      manager.write_data(on_chip_storage.detach().numpy()) # OFB
 
-   x = torch.from_numpy(manager.read_data())
-   output = model.classify(x)
+   on_chip_storage = torch.from_numpy(manager.read_data())
+   output = model.classify(on_chip_storage)
    pred = output.argmax(dim = 1, keepdim = True)
 
    print(('Image {} --> Prediction: ' + str(pred.item())
