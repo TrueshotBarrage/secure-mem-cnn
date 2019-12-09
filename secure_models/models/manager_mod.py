@@ -8,38 +8,38 @@ from pyoram.storage.block_storage_ram import BlockStorageRAM
 # Precondition: Must be a factor of the # of weights for now
 M = dict()
 M[0] = 2
-M[1] = 2
-M[2] = 2
+M[1] = 0
+M[2] = 0
 M[3] = 2
-M[4] = 2
-M[5] = 2
+M[4] = 0
+M[5] = 0
 M[6] = 2
-M[7] = 2
+M[7] = 0
 M[8] = 2
-M[9] = 2
+M[9] = 0
 M[10] = 2
-M[11] = 2
-M[12] = 2
+M[11] = 0
+M[12] = 0
 
 N = dict()
 N[0] = 3
-N[1] = 16
-N[2] = 16
+N[1] = 0
+N[2] = 0
 N[3] = 16
-N[4] = 16
-N[5] = 16
+N[4] = 0
+N[5] = 0
 N[6] = 16
-N[7] = 16
+N[7] = 0
 N[8] = 16
-N[9] = 16
+N[9] = 0
 N[10] = 16
-N[11] = 16
-N[12] = 16
+N[11] = 0
+N[12] = 0
       
 class Manager():
    def __init__(self):
-      self.block_size = 1024
-      self.block_count = 10000
+      self.block_size = 512
+      self.block_count = 25600
       self.start_block = 0
       self.elem_size = 4
       self.weights = dict()
@@ -72,22 +72,26 @@ class Manager():
       h = weights.detach().numpy()
       start_block = self.start_block
       shape = h.shape
-      # eventually implement partial convs with partial filters (remove shape[1])
-      fetch_size = shape[2] * shape[3] * shape[1] * M[layer]
+      # k^2 * M * N
+      fetch_size = shape[2] * shape[3] * N[layer] * M[layer]
       num_blocks_per_fetch = int(math.ceil(
          fetch_size * self.elem_size / float(self.block_size)))
-      num_blocks = int(num_blocks_per_fetch * shape[0] / float(M[layer]))
+      num_blocks = int(num_blocks_per_fetch * shape[0] * shape[1]
+         / (M[layer] * N[layer]))
 
       data_pad = int((num_blocks_per_fetch * self.block_size \
       - fetch_size * self.elem_size) / self.elem_size)
+      # for number of fetches:
       for i in range(int(shape[0] / M[layer])):
-         data = h[i * M[layer] : (i+1) * M[layer]].flatten()
-         if data_pad != 0:
-            arr = np.zeros(data_pad, dtype = "float32")
-            data = np.concatenate((data, arr))
-         
-         self.write_blocks(start_block + i * num_blocks_per_fetch, \
-            num_blocks_per_fetch, data)
+         for j in range(int(shape[1] / N[layer])):
+            data = h[i*M[layer] : (i+1)*M[layer], j*N[layer] : (j+1)*N[layer]]
+            data = data.flatten()
+            if data_pad != 0:
+               arr = np.zeros(data_pad, dtype = "float32")
+               data = np.concatenate((data, arr))
+            
+            self.write_blocks(start_block + num_blocks_per_fetch \
+               * int(shape[1] / N[layer] * i + j), num_blocks_per_fetch, data)
 
       self.start_block += num_blocks
       self.weights[layer] = (start_block, num_blocks, shape, data_pad)

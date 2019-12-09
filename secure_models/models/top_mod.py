@@ -117,7 +117,8 @@ def write_model(model, manager):
          manager.write_weights(i, weights)
          manager.write_bias(i, bias)
       except:
-         pass
+         if (i == 0) or (i == 3) or (i == 6) or (i == 8) or (i == 10):
+            raise
 
 def compute_layer(layer, index, x, manager = None):
    if (manager is None):
@@ -143,8 +144,6 @@ def compute_layer(layer, index, x, manager = None):
          
          return result
       except:
-         print("Failed to convolve this layer \
-         (could be ReLU, etc. or some error!)")
          return layer(x)
 
 def predict(model, test_loader, image, manager):
