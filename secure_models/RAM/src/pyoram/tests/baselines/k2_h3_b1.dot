@@ -1,0 +1,33 @@
+// Created by SizedVirtualHeap.write_as_dot(...)
+digraph heaptree {
+node [shape=record]
+  0 [penwidth=1,label="''}"];
+  1 [penwidth=1,label="'0'}"];
+  3 [penwidth=1,label="'00'}"];
+  7 [penwidth=1,label="'000'}"];
+  3 -> 7 ;
+  8 [penwidth=1,label="'001'}"];
+  3 -> 8 ;
+  1 -> 3 ;
+  4 [penwidth=1,label="'01'}"];
+  9 [penwidth=1,label="'010'}"];
+  4 -> 9 ;
+  10 [penwidth=1,label="'011'}"];
+  4 -> 10 ;
+  1 -> 4 ;
+  0 -> 1 ;
+  2 [penwidth=1,label="'1'}"];
+  5 [penwidth=1,label="'10'}"];
+  11 [penwidth=1,label="'100'}"];
+  5 -> 11 ;
+  12 [penwidth=1,label="'101'}"];
+  5 -> 12 ;
+  2 -> 5 ;
+  6 [penwidth=1,label="'11'}"];
+  13 [penwidth=1,label="'110'}"];
+  6 -> 13 ;
+  14 [penwidth=1,label="'111'}"];
+  6 -> 14 ;
+  2 -> 6 ;
+  0 -> 2 ;
+}

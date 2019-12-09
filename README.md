@@ -1,2 +1,2 @@
-# secure-mem-cnn
+# Secure-CNN
 Secure CNN Accelerator
