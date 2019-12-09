@@ -124,16 +124,19 @@ def compute_layer(layer, index, x, storage = None):
       return layer(x)
    else:
       try:
-         weights = torch.from_numpy(storage.read_layer_weights(index))
-         bias = torch.from_numpy(storage.read_layer_bias(index))
-         # Need to change to this!!! below:
-         #
-         # for each (i) of the weights/biases in blocks: 
-         #    result += F.conv2d(x, weights[0~i], stride/padding etc.)
-         # apply bias to result
-         # return result
-         return F.conv2d(x, weights, bias = bias, 
-         stride = layer.stride, padding = layer.padding)
+         weights_iter_index = 0
+         bias_iter_index = 0
+         done = False
+
+         while not done:
+            weights = storage.read_layer_weights(index, weights_iter_index)
+            done = weights[1]
+            weights = torch.from_numpy(weights[0])
+
+            bias = torch.from_numpy(storage.read_layer_bias(index, bias_iter_index))
+
+            return F.conv2d(x, weights, bias = bias, 
+            stride = layer.stride, padding = layer.padding)
       except:
          return layer(x)
 
@@ -149,9 +152,9 @@ def predict(model, test_loader, image, storage):
    # For each layer (Conv2d, ReLU, pool, etc.) 
    # of the given CNN (AlexNet):
    for index, layer in enumerate(model.features):
-      x = torch.from_numpy(storage.read_data())
-      h = compute_layer(layer, index, x, storage)
-      storage.write_data(h.detach().numpy())
+      x = torch.from_numpy(storage.read_data()) # Input feature block
+      h = compute_layer(layer, index, x, storage) # Convolution
+      storage.write_data(h.detach().numpy()) # Output feature block, to be next input
 
    x = torch.from_numpy(storage.read_data())
    output = model.classify(x)

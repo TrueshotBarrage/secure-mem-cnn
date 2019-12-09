@@ -4,6 +4,8 @@ import numpy as np
 import pyoram
 from pyoram.encrypted_storage.encrypted_block_storage import EncryptedBlockStorage
 from pyoram.storage.block_storage_ram import BlockStorageRAM
+
+ON_CHIP_MEMORY_SIZE = 7
       
 class Manager():
    def __init__(self, storage_name):
@@ -43,6 +45,9 @@ class Manager():
       shape = h.shape
       num_blocks = int(math.ceil(h.nbytes / float(self.block_size)))
 
+      # Calculates how many times to write the set of blocks
+      iterations = int(math.ceil(num_blocks / float(ON_CHIP_MEMORY_SIZE)))
+
       # Pads the data to the worst case size parameter block
       data_pad = int((num_blocks * self.block_size - h.nbytes) / self.elem_size)
       h = h.flatten()
@@ -51,38 +56,72 @@ class Manager():
          h = np.concatenate((h, arr))
       
       self.write_blocks(start_block, num_blocks, h)
-      return (start_block, num_blocks, shape, data_pad)
+      return (start_block, (num_blocks, iterations), shape, data_pad)
    
    # "data" holds no actual data, but specs for the param, 
    # including data_pad (which is an int)
-   def read_layer_param(self, data):
-      (start_block, num_blocks, shape, data_pad) = data
-      data_size = int(self.block_size / self.elem_size)
-      h = self.read_blocks(start_block, num_blocks)
-      
-      if data_pad != 0:
-          h = h[: h.size - data_pad]
+   def read_layer_param(self, data, iter_index):
+      (start_block, (num_blocks, iterations), shape, data_pad) = data
 
-      h = h.reshape(shape)
-      return h
+      if iter_index is not 0:
+         start_block += iter_index * ON_CHIP_MEMORY_SIZE - 1
+      
+      # Check if the passed parameter is a bias filter
+      try:
+         check = shape[1]
+      except:
+         h = self.read_blocks(start_block, num_blocks)
+         if data_pad != 0:
+            h = h[: h.size - data_pad]
+         
+         h = h.reshape(shape)
+         return h
+      
+      num_filters = (self.block_size / self.elem_size * ON_CHIP_MEMORY_SIZE) \
+         / (shape[1] * shape[2] * shape[3])
+      leftover = (self.block_size / self.elem_size * ON_CHIP_MEMORY_SIZE) \
+         % (shape[1] * shape[2] * shape[3])
+      new_shape = (num_filters, shape[1], shape[2], shape[3])
+
+      done = True if iter_index is (iterations - 2) else False
+      
+      if not done:
+         h = self.read_blocks(start_block, ON_CHIP_MEMORY_SIZE)
+         h = h[: h.size - leftover]
+      else:
+         remaining = num_blocks % ON_CHIP_MEMORY_SIZE
+         if remaining is not 0:
+            h = self.read_blocks(start_block, remaining)
+         else: 
+            h = self.read_blocks(start_block, ON_CHIP_MEMORY_SIZE)
+
+         if data_pad != 0:
+            h = h[: h.size - data_pad]
+
+      try:
+         h = h.reshape(new_shape)
+      except:
+         h = h.reshape(shape)
+
+      return (h, done)
 
    def write_weights(self, layer, weights):
       weights = weights.detach().numpy()
       weight_data = self.write_layer_param(weights, self.start_block)
-      self.start_block += weight_data[1]
+      self.start_block += weight_data[1][0]
       self.weights[layer] = weight_data
 
    def write_bias(self, layer, bias):
       bias = bias.detach().numpy()
       bias_data = self.write_layer_param(bias, self.start_block)
-      self.start_block += bias_data[1]
+      self.start_block += bias_data[1][0]
       self.biases[layer] = bias_data
 
-   def read_layer_weights(self, layer):
-      return self.read_layer_param(self.weights[layer])
+   def read_layer_weights(self, layer, iter_index):
+      return self.read_layer_param(self.weights[layer], iter_index)
  
-   def read_layer_bias(self, layer):
-      return self.read_layer_param(self.biases[layer])
+   def read_layer_bias(self, layer, iter_index):
+      return self.read_layer_param(self.biases[layer], iter_index)
    
    def write_data(self, h):
       self.array_shape = h.shape
