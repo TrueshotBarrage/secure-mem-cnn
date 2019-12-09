@@ -124,19 +124,28 @@ def compute_layer(layer, index, x, storage = None):
       return layer(x)
    else:
       try:
-         weights_iter_index = 0
-         bias_iter_index = 0
+         iter_index = 0
          done = False
 
          while not done:
-            weights = storage.read_layer_weights(index, weights_iter_index)
+            weights = storage.read_layer_weights(index, iter_index)
             done = weights[1]
+            num_filters = weights[0].shape[0]
             weights = torch.from_numpy(weights[0])
 
-            bias = torch.from_numpy(storage.read_layer_bias(index, bias_iter_index))
+            bias = torch.from_numpy(storage.read_layer_bias(index, iter_index, num_filters))
 
-            return F.conv2d(x, weights, bias = bias, 
-            stride = layer.stride, padding = layer.padding)
+            # First time iterating through
+            if iter_index is 0:
+               result = F.conv2d(x, weights, bias = bias, 
+               stride = layer.stride, padding = layer.padding)
+            else:
+               result = torch.cat((result, F.conv2d(x, weights, bias = bias, 
+               stride = layer.stride, padding = layer.padding)), dim = 0)
+            
+            iter_index += 1
+         
+         return result
       except:
          return layer(x)
 

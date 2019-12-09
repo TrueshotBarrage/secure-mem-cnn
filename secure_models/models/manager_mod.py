@@ -66,23 +66,13 @@ class Manager():
       if iter_index is not 0:
          start_block += iter_index * ON_CHIP_MEMORY_SIZE - 1
       
-      # Check if the passed parameter is a bias filter
-      try:
-         check = shape[1]
-      except:
-         h = self.read_blocks(start_block, num_blocks)
-         if data_pad != 0:
-            h = h[: h.size - data_pad]
-         
-         h = h.reshape(shape)
-         return h
-      
+      # Only works for weight filters *
       num_filters = (self.block_size / self.elem_size * ON_CHIP_MEMORY_SIZE) \
          / (shape[1] * shape[2] * shape[3])
       leftover = (self.block_size / self.elem_size * ON_CHIP_MEMORY_SIZE) \
          % (shape[1] * shape[2] * shape[3])
       new_shape = (num_filters, shape[1], shape[2], shape[3])
-
+      
       done = True if iter_index is (iterations - 2) else False
       
       if not done:
@@ -98,11 +88,7 @@ class Manager():
          if data_pad != 0:
             h = h[: h.size - data_pad]
 
-      try:
-         h = h.reshape(new_shape)
-      except:
-         h = h.reshape(shape)
-
+      h = h.reshape(new_shape)
       return (h, done)
 
    def write_weights(self, layer, weights):
@@ -120,8 +106,16 @@ class Manager():
    def read_layer_weights(self, layer, iter_index):
       return self.read_layer_param(self.weights[layer], iter_index)
  
-   def read_layer_bias(self, layer, iter_index):
-      return self.read_layer_param(self.biases[layer], iter_index)
+   def read_layer_bias(self, layer, iter_index, num_filter):
+      (start_block, (num_blocks, iterations), shape, data_pad) = self.biases[layer]
+      h = self.read_blocks(start_block, num_blocks)
+      
+      if data_pad != 0:
+         h = h[: h.size - data_pad]
+      
+      h = h[iter_index * num_filter : (iter_index + 1) * num_filter]
+      h = h.reshape((num_filter,))
+      return h
    
    def write_data(self, h):
       self.array_shape = h.shape
