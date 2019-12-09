@@ -11,7 +11,7 @@ import time
 
 from manager_mod import *
 
-PATH = 'model/alexnet'
+PATH = 'model/hello/alexnet'
 
 class Alexnet(nn.Module):
    def __init__(self):
@@ -147,6 +147,7 @@ def compute_layer(layer, index, x, storage = None):
          
          return result
       except:
+         print("Bad code")
          return layer(x)
 
 def predict(model, test_loader, image, storage):
@@ -201,7 +202,7 @@ def main():
    else:
       model = torch.load(PATH)
    
-   images = range(10) # Load 10 images to guess
+   images = range(10) # Load 25 images to guess
 
    storage = Manager(storage_name = "heap.bin")
 

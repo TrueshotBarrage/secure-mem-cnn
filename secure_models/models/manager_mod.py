@@ -6,6 +6,7 @@ from pyoram.encrypted_storage.encrypted_block_storage import EncryptedBlockStora
 from pyoram.storage.block_storage_ram import BlockStorageRAM
 
 ON_CHIP_MEMORY_SIZE = 7
+FETCH_AMOUNT = 2 # Precondition: Must be a factor of the # of weights for now
       
 class Manager():
    def __init__(self, storage_name):
@@ -43,20 +44,24 @@ class Manager():
    # but specs for the param, including data_pad (which is an int)
    def write_layer_param(self, h, start_block):
       shape = h.shape
-      num_blocks = int(math.ceil(h.nbytes / float(self.block_size)))
+      # eventually implement partial convs with partial filters (remove shape[1])
+      fetch_size = shape[2] * shape[3] * shape[1] * FETCH_AMOUNT
+      num_blocks_per_fetch = int(math.ceil(
+         fetch_size * self.elem_size / float(self.block_size)))
+      num_blocks = int(num_blocks_per_fetch * shape[0] / float(FETCH_AMOUNT))
 
-      # Calculates how many times to write the set of blocks
-      iterations = int(math.ceil(num_blocks / float(ON_CHIP_MEMORY_SIZE)))
-
-      # Pads the data to the worst case size parameter block
-      data_pad = int((num_blocks * self.block_size - h.nbytes) / self.elem_size)
-      h = h.flatten()
-      if (data_pad != 0):
-         arr = np.zeros(data_pad, dtype = "float32")
-         h = np.concatenate((h, arr))
-      
-      self.write_blocks(start_block, num_blocks, h)
-      return (start_block, (num_blocks, iterations), shape, data_pad)
+      data_pad = int((num_blocks_per_fetch * self.block_size \
+      - fetch_size * self.elem_size) / self.elem_size)
+      for i in range(shape[0]):
+         index = i * FETCH_AMOUNT
+         data = h[index : index + FETCH_AMOUNT].flatten()
+         if (data_pad != 0):
+            arr = np.zeros(data_pad, dtype = "float32")
+            data = np.concatenate((data, arr))
+         
+         self.write_blocks(start_block + i * num_blocks_per_fetch, \
+            num_blocks_per_fetch, data)
+      return (start_block, num_blocks, shape, data_pad)
    
    # "data" holds no actual data, but specs for the param, 
    # including data_pad (which is an int)
@@ -65,24 +70,24 @@ class Manager():
 
       if iter_index is not 0:
          start_block += iter_index * ON_CHIP_MEMORY_SIZE - 1
-      
+
       # Only works for weight filters *
-      num_filters = (self.block_size / self.elem_size * ON_CHIP_MEMORY_SIZE) \
-         / (shape[1] * shape[2] * shape[3])
-      leftover = (self.block_size / self.elem_size * ON_CHIP_MEMORY_SIZE) \
-         % (shape[1] * shape[2] * shape[3])
+      num_filters = int((self.block_size / self.elem_size * ON_CHIP_MEMORY_SIZE) \
+         / (shape[1] * shape[2] * shape[3]))
+      leftover = int((self.block_size / self.elem_size * ON_CHIP_MEMORY_SIZE) \
+         % (shape[1] * shape[2] * shape[3]))
       new_shape = (num_filters, shape[1], shape[2], shape[3])
       
-      done = True if iter_index is (iterations - 2) else False
+      done = True if iter_index is (iterations - 1) else False
       
       if not done:
          h = self.read_blocks(start_block, ON_CHIP_MEMORY_SIZE)
          h = h[: h.size - leftover]
-      else:
+      else: # Last iteration
          remaining = num_blocks % ON_CHIP_MEMORY_SIZE
          if remaining is not 0:
             h = self.read_blocks(start_block, remaining)
-         else: 
+         else: # Edge case where remaining is zero or seven
             h = self.read_blocks(start_block, ON_CHIP_MEMORY_SIZE)
 
          if data_pad != 0:
@@ -94,13 +99,13 @@ class Manager():
    def write_weights(self, layer, weights):
       weights = weights.detach().numpy()
       weight_data = self.write_layer_param(weights, self.start_block)
-      self.start_block += weight_data[1][0]
+      self.start_block += weight_data[1]
       self.weights[layer] = weight_data
 
    def write_bias(self, layer, bias):
       bias = bias.detach().numpy()
       bias_data = self.write_layer_param(bias, self.start_block)
-      self.start_block += bias_data[1][0]
+      self.start_block += bias_data[1]
       self.biases[layer] = bias_data
 
    def read_layer_weights(self, layer, iter_index):
