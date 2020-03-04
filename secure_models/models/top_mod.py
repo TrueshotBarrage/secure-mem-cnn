@@ -217,7 +217,7 @@ def main():
    else:
       model = torch.load(PATH)
    
-   images = range(10) # Load 25 images to guess
+   images = range(1) # Load 1 images to guess
 
    manager = Manager()
 
